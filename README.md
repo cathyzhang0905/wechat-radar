@@ -66,7 +66,7 @@ cp .env.example .env
   - `EMAIL_USER` / `EMAIL_PASSWORD` / `EMAIL_TO` — 邮件（自动识别 Gmail / QQ邮箱 / 163邮箱 / Outlook）
 
 编辑 `config.yaml`：
-- `accounts` — 你要关注的公众号列表
+- `accounts` — 已内置 48 个精选 AI / 科技 / 创投方向优质公众号，可直接使用或自行增删
 - `profile` — 你的背景和兴趣（用于个性化评分）
 - `scoring` — 评分权重和阈值
 
