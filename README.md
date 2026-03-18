@@ -6,7 +6,7 @@ AI 驱动的微信公众号智能日报 — 自动抓取、多维度评分、个
 
 ## 功能
 
-- **48+ 公众号监控** — 自动抓取 24 小时内新文章
+- **公众号监控** — 自动抓取 24 小时内新文章
 - **规则预过滤** — 关键词组合过滤广告软文，技术文章白名单放行
 - **跨源去重** — bigram Jaccard 相似度，同一事件只保留最优
 - **AI 多维度评分** — 4 个维度加权打分，Pydantic 结构化输出
@@ -23,7 +23,7 @@ AI 驱动的微信公众号智能日报 — 自动抓取、多维度评分、个
   → [Step 2] AI 4 维度评分（LLM + Pydantic 结构化输出）
   → [Step 3] 排序 Top N（综合分 < 5 不推送）
   → [Step 4] 生成开场白（LLM 额外调用）
-  → [Step 5] 推送（飞书卡片 + Gmail HTML）
+  → [Step 5] 推送（飞书 / 钉钉 / 邮件，按需配置）
   → [Step 6] 保存 state + 评分日志
 ```
 
@@ -43,7 +43,7 @@ AI 驱动的微信公众号智能日报 — 自动抓取、多维度评分、个
 ### 1. 安装依赖
 
 ```bash
-git clone https://github.com/你的用户名/wechat-radar.git
+git clone https://github.com/cathyzhang0905/wechat-radar.git
 cd wechat-radar
 python3 -m venv .venv
 source .venv/bin/activate
@@ -110,7 +110,7 @@ wechat-radar/
 ├── filter.py        AI 多维度评分 + 开场白生成
 ├── prefilter.py     规则预过滤（关键词组合 + 技术白名单）
 ├── dedup.py         跨源去重（bigram Jaccard + 正文相似度）
-├── notifier.py      飞书卡片 + Gmail HTML 推送
+├── notifier.py      多渠道推送（飞书 / 钉钉 / 邮件）
 ├── auth.py          微信扫码登录 / token 管理
 ├── assets/          Newsletter 头图等静态资源
 ├── .env.example     环境变量模板
@@ -119,7 +119,7 @@ wechat-radar/
 
 ## 推送效果
 
-### Gmail Newsletter
+### 邮件 Newsletter
 
 - 固定品牌 banner 头图
 - AI 生成的卷首语（每日不同）
@@ -127,14 +127,14 @@ wechat-radar/
 - 按 category 分区展示（深度分析 / 行业观察 / 工具推荐 / 活动资讯）
 - 每篇文章：标题 + 缩略图 + 摘要 + 推荐理由 + 维度评分
 
-### 飞书卡片
+### 飞书 / 钉钉
 
-- 交互式卡片消息
-- 每篇文章带"阅读原文"按钮
+- 飞书：交互式卡片消息，每篇文章带"阅读原文"按钮
+- 钉钉：Markdown 格式消息，含开场白 + 文章列表
 
 ## 技术栈
 
-- **AI 评分**：支持 Anthropic Claude / OpenAI 兼容接口（默认 Qwen2.5-72B via SiliconFlow）
+- **AI 评分**：支持 Anthropic Claude / OpenAI 兼容接口
 - **结构化输出**：Pydantic v2
 - **微信 API**：mp.weixin.qq.com 官方接口（searchbiz + appmsgpublish）
 - **正文提取**：BeautifulSoup + lxml
