@@ -185,11 +185,10 @@ wechat-radar/
 
 ## Roadmap
 
-- [ ] 飞书卡片模板升级（跟邮件对齐）
+- [ ] 用户反馈闭环（推送文章支持"有用/没用"反馈，数据驱动评分调优）
 - [ ] 周报汇总（攒一周评分日志，周末出精选）
-- [ ] 更多信息源（RSS、Product Hunt、Twitter）
-- [ ] 两阶段过滤（embedding 粗筛 + LLM 精排）
-- [ ] Web UI
+- [ ] 更多信息源（RSS、Product Hunt、Hacker News，从公众号工具升级为信息雷达）
+- [ ] Claude Code / OpenClaw Skills 集成
 
 ## License
 
