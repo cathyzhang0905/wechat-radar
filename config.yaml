@@ -78,6 +78,9 @@ preferences:
   custom: |
     # 补充偏好（可选）
 
+fetch:
+  hours: 24  # 抓取最近 N 小时内的文章，默认 24
+
 scoring:
   weights:
     relevance: 2

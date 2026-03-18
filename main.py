@@ -108,12 +108,13 @@ def run(test_mode: bool = False, dry_run: bool = False):
     scoring_config = config.get("scoring", {})
     min_score = scoring_config.get("min_score", 5)
     top_n = scoring_config.get("top_n", 10)
+    fetch_hours = config.get("fetch", {}).get("hours", 24)
 
     if not accounts:
         logger.error("No accounts in config.yaml")
         sys.exit(1)
 
-    logger.info(f"Accounts: {len(accounts)} | min_score={min_score} | top_n={top_n}")
+    logger.info(f"Accounts: {len(accounts)} | fetch_hours={fetch_hours} | min_score={min_score} | top_n={top_n}")
 
     # 2. 加载已处理记录
     processed_urls = load_state()
@@ -131,7 +132,7 @@ def run(test_mode: bool = False, dry_run: bool = False):
             logger.warning(f"Skipping {account_name}: cannot find fakeid")
             continue
 
-        articles = get_recent_articles(fakeid, account_name, hours=24)
+        articles = get_recent_articles(fakeid, account_name, hours=fetch_hours)
 
         if test_mode:
             articles = articles[:1]
