@@ -81,6 +81,14 @@ preferences:
 fetch:
   hours: 24  # 抓取最近 N 小时内的文章，默认 24
 
+schedule:
+  # 定时运行的 cron 表达式，可配置多个
+  # 格式：分 时 日 月 周（标准 crontab 格式）
+  # 运行 python3 main.py --setup-cron 自动写入 crontab
+  cron:
+    - "0 9 * * *"    # 每天 09:00
+    - "0 18 * * *"   # 每天 18:00
+
 scoring:
   weights:
     relevance: 2

@@ -98,11 +98,20 @@ python3 main.py
 
 ### 5. 定时任务
 
+在 `config.yaml` 中配置运行时间：
+
+```yaml
+schedule:
+  cron:
+    - "0 9 * * *"    # 每天 09:00
+    - "0 18 * * *"   # 每天 18:00
+```
+
+然后一键写入 crontab：
+
 ```bash
-# 每天 9:00 和 18:00 自动运行
-crontab -e
-0 9 * * * cd /path/to/wechat-radar && .venv/bin/python3 main.py >> /tmp/wechat-radar.log 2>&1
-0 18 * * * cd /path/to/wechat-radar && .venv/bin/python3 main.py >> /tmp/wechat-radar.log 2>&1
+python3 main.py --setup-cron   # 自动配置定时任务
+python3 main.py --remove-cron  # 移除定时任务
 ```
 
 ## 项目结构

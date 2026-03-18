@@ -2,10 +2,12 @@
 main.py - 微信公众号 AI 筛选推送系统入口
 
 用法:
-  python3 main.py              # 正常运行，处理24小时内新文章
+  python3 main.py              # 正常运行
   python3 main.py --login      # 手动扫码登录/续期
-  python3 main.py --test       # 测试模式：每个公众号取1篇，不写 state.json
+  python3 main.py --test       # 测试模式：每个公众号取1篇
   python3 main.py --dry-run    # 只拉取和筛选，不推送
+  python3 main.py --setup-cron # 根据 config.yaml 自动配置 crontab
+  python3 main.py --remove-cron # 移除本项目的 crontab
 """
 import argparse
 import json
@@ -321,18 +323,109 @@ def _notify_token_expired():
 
 
 # ──────────────────────────────────────────────
+# Cron 管理
+# ──────────────────────────────────────────────
+
+_CRON_TAG = "# wechat-radar"
+
+
+def setup_cron():
+    """根据 config.yaml 中的 schedule.cron 自动配置 crontab"""
+    import subprocess
+
+    config = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8"))
+    cron_list = config.get("schedule", {}).get("cron", [])
+
+    if not cron_list:
+        logger.error("config.yaml 中没有配置 schedule.cron")
+        sys.exit(1)
+
+    python_path = sys.executable
+    project_dir = str(_script_dir)
+    log_file = f"/tmp/wechat-radar.log"
+
+    # 读取现有 crontab（排除本项目的行）
+    try:
+        result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        existing = result.stdout if result.returncode == 0 else ""
+    except Exception:
+        existing = ""
+
+    other_lines = [
+        line for line in existing.splitlines()
+        if _CRON_TAG not in line and line.strip()
+    ]
+
+    # 生成新的 cron 行
+    new_lines = []
+    for expr in cron_list:
+        expr = expr.strip()
+        cmd = f"{expr} cd {project_dir} && {python_path} main.py >> {log_file} 2>&1 {_CRON_TAG}"
+        new_lines.append(cmd)
+
+    all_lines = other_lines + new_lines
+    crontab_content = "\n".join(all_lines) + "\n"
+
+    # 写入 crontab
+    proc = subprocess.run(
+        ["crontab", "-"], input=crontab_content, text=True, capture_output=True
+    )
+    if proc.returncode == 0:
+        logger.info("Crontab 已更新：")
+        for line in new_lines:
+            logger.info(f"  {line}")
+    else:
+        logger.error(f"Crontab 写入失败: {proc.stderr}")
+        sys.exit(1)
+
+
+def remove_cron():
+    """移除本项目在 crontab 中的所有条目"""
+    import subprocess
+
+    try:
+        result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        existing = result.stdout if result.returncode == 0 else ""
+    except Exception:
+        existing = ""
+
+    other_lines = [
+        line for line in existing.splitlines()
+        if _CRON_TAG not in line and line.strip()
+    ]
+
+    if other_lines:
+        crontab_content = "\n".join(other_lines) + "\n"
+        subprocess.run(["crontab", "-"], input=crontab_content, text=True)
+    else:
+        subprocess.run(["crontab", "-r"], capture_output=True)
+
+    logger.info("已移除 wechat-radar 的 crontab 条目")
+
+
+# ──────────────────────────────────────────────
 # CLI 入口
 # ──────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="WeChat Digest - AI 公众号筛选推送")
+    parser = argparse.ArgumentParser(description="WeChat Radar - AI 公众号筛选推送")
     parser.add_argument("--login", action="store_true", help="手动扫码登录/续期")
-    parser.add_argument("--test", action="store_true", help="测试模式：每个公众号取1篇，不写 state.json")
+    parser.add_argument("--test", action="store_true", help="测试模式：每个公众号取1篇")
     parser.add_argument("--dry-run", action="store_true", help="只筛选不推送")
+    parser.add_argument("--setup-cron", action="store_true", help="根据 config.yaml 自动配置 crontab")
+    parser.add_argument("--remove-cron", action="store_true", help="移除本项目的 crontab")
     args = parser.parse_args()
 
     if args.login:
         success = login()
         sys.exit(0 if success else 1)
+
+    if args.setup_cron:
+        setup_cron()
+        sys.exit(0)
+
+    if args.remove_cron:
+        remove_cron()
+        sys.exit(0)
 
     run(test_mode=args.test, dry_run=args.dry_run)
