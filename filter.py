@@ -313,6 +313,11 @@ def _parse_evaluation(raw: str) -> Optional[dict]:
         # Bug 3 兜底：category 可能返回多个值，只取第一个
         if "category" in data and isinstance(data["category"], str):
             data["category"] = re.split(r"[|/、，,]", data["category"])[0].strip()
+        # 校验分数范围 1-10，超范围的 clamp 回来
+        if isinstance(data.get("scores"), dict):
+            data["scores"] = {
+                k: max(1, min(10, int(v))) for k, v in data["scores"].items()
+            }
         evaluation = ArticleEvaluation(**data)
         return evaluation.model_dump()
     except Exception as e:
