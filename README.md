@@ -15,43 +15,44 @@ AI 驱动的微信公众号智能日报 — 自动抓取、多维度评分、个
 
 ## 快速开始
 
-只需 3 步即可运行，所有配置都有合理默认值。
+所有配置都有合理默认值，一键脚本引导你完成全部配置。
 
-### 1. 安装
+### 方式一：一键安装（推荐）
 
 ```bash
+git clone https://github.com/cathyzhang0905/wechat-radar.git
+cd wechat-radar
+./setup.sh
+```
+
+脚本会自动：安装依赖 → 引导选择 AI 模型 → 配置推送渠道 → 扫码登录 → 测试运行。
+
+### 方式二：手动安装
+
+<details>
+<summary>展开手动安装步骤</summary>
+
+```bash
+# 1. 安装依赖
 git clone https://github.com/cathyzhang0905/wechat-radar.git
 cd wechat-radar
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-### 2. 配置（最少只需 2 项）
-
-```bash
+# 2. 配置（最少只需填 AI Key + 推送渠道）
 cp .env.example .env
-```
+# 编辑 .env，填写 AI 模型 API Key 和推送渠道
 
-编辑 `.env`，填写：
-
-- **AI 模型 API Key**（任选其一即可，推荐 DeepSeek 或 OpenAI）
-- **推送渠道**（任选其一即可，如飞书 Webhook 或邮箱）
-
-> 详细的 API Key 获取方式和推送渠道配置说明见 `.env.example`。
-
-### 3. 登录 & 运行
-
-```bash
-# 扫码登录微信公众号平台
+# 3. 扫码登录微信公众号平台
 python3 main.py --login
 
-# 试运行（完整流程但不推送，确认一切正常）
-python3 main.py --dry-run
-
-# 正式运行
-python3 main.py
+# 4. 运行
+python3 main.py --dry-run  # 试运行（不推送）
+python3 main.py            # 正式运行
 ```
+
+</details>
 
 > **关于微信登录**：需要有一个微信公众号（免费的个人订阅号即可）。前往 [微信公众平台](https://mp.weixin.qq.com/) 注册，用个人微信即可完成，无需企业资质。token 有效期约 3 天（微信服务端控制），过期后系统会自动通过已配置的推送渠道提醒你重新扫码。
 
@@ -178,6 +179,7 @@ wechat-radar/
 ├── dedup.py         跨源去重
 ├── notifier.py      多渠道推送（8 种）
 ├── auth.py          微信扫码登录 / token 管理
+├── setup.sh         一键安装配置脚本
 ├── assets/          邮件 banner 等静态资源
 ├── .env.example     环境变量模板（含详细配置说明）
 └── requirements.txt 依赖列表
