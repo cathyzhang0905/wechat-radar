@@ -1,9 +1,54 @@
 accounts:
   # 添加你想关注的微信公众号名称，每行一个
+  # 以下是一份 AI / 科技 / 创投方向的推荐列表，可直接使用或自行增删
   - 虎嗅APP
+  - 晚点LatePost
   - 机器之心
   - 少数派
-  # - 更多公众号...
+  - 卫夕指北
+  - 智能涌现
+  - 硅星人Pro
+  - APPSO
+  - InfoQ
+  - Founder Park
+  - 42章经
+  - MacTalk
+  - 孤独大脑
+  - 笔记侠
+  - 有新Newin
+  - AI寒武纪
+  - AI工程化
+  - 赛博禅心
+  - 经纬创投
+  - 红杉汇
+  - 真格基金
+  - 创新工场
+  - 奇绩创坛
+  - Z Potentials
+  - caoz的梦呓
+  - 望月的博客
+  - 花叔
+  - 特工宇宙
+  - 潜云思绪
+  - 牛村木木山
+  - Stablehunter
+  - 我思故我在
+  - 张晓东西南北
+  - 郎瀚威Will
+  - AI产品阿颖
+  - 卓哥投研笔记
+  - 猫猫头的日记
+  - 数字生命卡兹克
+  - P-Hunt内容速览
+  - 无界社区mix lab
+  - AI Reinvent
+  - Draco正在VibeCoding
+  - AkashaBot
+  - 张五常
+  - 十字路口Crossing
+  - 豪大说
+  - 随机小分队
+  - AI Hacker House
 
 profile:
   background: "简要描述你的背景，例如：计算机本科，3 年后端开发经验，目前在关注 AI 应用方向。"
