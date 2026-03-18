@@ -59,7 +59,7 @@ cp .env.example .env
 ```
 
 需要配置：
-- `AI_PROVIDER` / `AI_API_KEY` / `AI_BASE_URL` — AI 评分模型（支持 Anthropic / OpenAI 兼容接口）
+- AI 评分模型（任选其一）：Anthropic Claude / OpenAI / DeepSeek / 硅基流动 / 通义千问 / 月之暗面 / 智谱 GLM / Ollama 本地模型等（任何 OpenAI 兼容接口均可）
 - 推送渠道（至少选一个）：
   - `FEISHU_WEBHOOK` — 飞书群机器人
   - `DINGTALK_WEBHOOK` — 钉钉群机器人
@@ -134,7 +134,7 @@ wechat-radar/
 
 ## 技术栈
 
-- **AI 评分**：支持 Anthropic Claude / OpenAI 兼容接口
+- **AI 评分**：支持 Anthropic Claude / OpenAI / DeepSeek / 通义千问 / 硅基流动 / Ollama 等任何 OpenAI 兼容接口
 - **结构化输出**：Pydantic v2
 - **微信 API**：mp.weixin.qq.com 官方接口（searchbiz + appmsgpublish）
 - **正文提取**：BeautifulSoup + lxml
