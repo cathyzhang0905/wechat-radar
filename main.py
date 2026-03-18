@@ -195,6 +195,8 @@ def run(test_mode: bool = False, dry_run: bool = False):
 
     # Step 2: AI 评分
     all_results = []  # 评分日志（含所有文章）
+    scoring_dims = config.get("scoring", {}).get("dimensions") or {}
+    zero_scores = {name: 0 for name in scoring_dims} if scoring_dims else {"relevance": 0, "depth": 0, "info_density": 0, "actionability": 0}
 
     for art in all_articles:
         # Bug 4: 正文为空或极短时跳过 AI 评分
@@ -205,8 +207,7 @@ def run(test_mode: bool = False, dry_run: bool = False):
                 "account_name": art.get("account_name", ""),
                 "url": art.get("url", ""),
                 "is_ad": False,
-                "scores": {"relevance": 0, "depth": 0, "info_density": 0,
-                            "actionability": 0},
+                "scores": dict(zero_scores),
                 "summary": "正文抓取失败",
                 "reason": "",
                 "tags": [],

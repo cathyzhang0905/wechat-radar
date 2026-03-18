@@ -117,10 +117,33 @@ schedule:
   log_file: /tmp/wechat-radar.log
 
 scoring:
-  weights:
-    relevance: 2
-    depth: 1
-    info_density: 1
-    actionability: 2
+  # 评分维度：name + description + weight
+  # 默认启用 4 个核心维度，可按需增删
+  dimensions:
+    relevance:
+      description: "与用户兴趣的相关度（1=完全无关，10=高度匹配）"
+      weight: 2
+    depth:
+      description: "思考深度（1=标题党/无内容，10=有独到洞察、商业框架、一手经验或深度调研）"
+      weight: 1
+    info_density:
+      description: "信息密度（1=水文/大量废话，10=全篇干货）"
+      weight: 1
+    actionability:
+      description: "可行动性（1=纯闲聊/纯资讯，10=读完能影响决策、启发行动方向）"
+      weight: 2
+    # ── 以下为可选维度，取消注释即可启用 ──
+    # originality:
+    #   description: "原创性（1=纯转载搬运，10=独家信息、一手数据、原创研究）"
+    #   weight: 1
+    # timeliness:
+    #   description: "时效性（1=旧闻/常识，10=热点事件、最新发布、第一时间报道）"
+    #   weight: 1
+    # credibility:
+    #   description: "可信度（1=无来源/道听途说，10=权威来源、有数据支撑、可验证）"
+    #   weight: 1
+    # entertainment:
+    #   description: "趣味性（1=枯燥乏味，10=故事性强、引人入胜、有传播力）"
+    #   weight: 1
   min_score: 5
   top_n: 20
