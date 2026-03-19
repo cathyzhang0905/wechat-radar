@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -103,6 +104,13 @@ def run(test_mode: bool = False, dry_run: bool = False):
         _notify_token_expired()
         logger.error("请运行 python3 main.py --login 重新扫码登录")
         sys.exit(1)
+
+    # 0.1 Token 即将过期提前提醒（12 小时内）
+    expiry = token_data.get("expiry_timestamp", 0)
+    remaining_hours = (expiry - time.time()) / 3600
+    if remaining_hours < 12:
+        logger.warning(f"Token 将在 {remaining_hours:.1f} 小时后过期，发送提前提醒")
+        _notify_token_expiring_soon(remaining_hours)
 
     # 1. 读配置
     config = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8"))
@@ -316,9 +324,19 @@ def _now_cst() -> str:
     return datetime.now(cst).isoformat()
 
 
+def _notify_token_expiring_soon(remaining_hours: float):
+    """Token 即将过期，提前提醒"""
+    alert_text = f"⏰ 微信 Token 将在 {remaining_hours:.1f} 小时后过期，请尽快运行 python3 main.py --login 重新扫码续期"
+    _send_alert(alert_text)
+
+
 def _notify_token_expired():
     """通过所有已配置的推送渠道通知 token 过期"""
-    alert_text = "⚠️ 微信登录已过期，请运行 python3 main.py --login 重新扫码登录"
+    _send_alert("⚠️ 微信登录已过期，请运行 python3 main.py --login 重新扫码登录")
+
+
+def _send_alert(alert_text: str):
+    """通过所有已配置的推送渠道发送提醒"""
     sent = False
 
     # 飞书
@@ -368,7 +386,7 @@ def _notify_token_expired():
     if bark_url:
         try:
             import requests as _req
-            url = f"{bark_url.rstrip('/')}/Token过期提醒/{alert_text}"
+            url = f"{bark_url.rstrip('/')}/Token提醒/{alert_text}"
             _req.get(url, timeout=10)
             sent = True
         except Exception as e:
@@ -380,7 +398,7 @@ def _notify_token_expired():
         try:
             import requests as _req
             _req.post(f"https://sctapi.ftqq.com/{sc_key}.send",
-                      data={"title": "Token过期提醒", "desp": alert_text}, timeout=10)
+                      data={"title": "Token提醒", "desp": alert_text}, timeout=10)
             sent = True
         except Exception as e:
             logger.warning(f"ServerChan alert failed: {e}")
@@ -391,7 +409,7 @@ def _notify_token_expired():
         try:
             import requests as _req
             _req.post("http://www.pushplus.plus/send",
-                      json={"token": pp_token, "title": "Token过期提醒", "content": alert_text}, timeout=10)
+                      json={"token": pp_token, "title": "Token提醒", "content": alert_text}, timeout=10)
             sent = True
         except Exception as e:
             logger.warning(f"PushPlus alert failed: {e}")
@@ -401,7 +419,7 @@ def _notify_token_expired():
     if email_user:
         try:
             send_email(
-                [{"title": "微信登录过期提醒", "account_name": "系统", "url": "",
+                [{"title": "Token 提醒", "account_name": "系统", "url": "",
                   "summary": alert_text, "reason": "", "tags": [], "category": "系统通知",
                   "scores": {}, "final_score": 0, "images": [], "cover": ""}],
                 intro=alert_text, branding=None,
@@ -411,9 +429,9 @@ def _notify_token_expired():
             logger.warning(f"Email alert failed: {e}")
 
     if sent:
-        logger.info("Token expiry alert sent via configured channels")
+        logger.info("Alert sent via configured channels")
     else:
-        logger.warning("No push channels configured — cannot send token expiry alert")
+        logger.warning("No push channels configured — cannot send alert")
 
 
 # ──────────────────────────────────────────────
