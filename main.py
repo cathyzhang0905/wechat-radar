@@ -414,16 +414,21 @@ def _send_alert(alert_text: str):
         except Exception as e:
             logger.warning(f"PushPlus alert failed: {e}")
 
-    # 邮件
+    # 邮件（仅发给发件人自己，不打扰其他收件人）
     email_user = os.environ.get("EMAIL_USER") or os.environ.get("GMAIL_USER", "")
-    if email_user:
+    email_pass = os.environ.get("EMAIL_PASSWORD") or os.environ.get("GMAIL_APP_PASSWORD", "")
+    if email_user and email_pass:
         try:
-            send_email(
-                [{"title": "Token 提醒", "account_name": "系统", "url": "",
-                  "summary": alert_text, "reason": "", "tags": [], "category": "系统通知",
-                  "scores": {}, "final_score": 0, "images": [], "cover": ""}],
-                intro=alert_text, branding=None,
-            )
+            import smtplib
+            from email.mime.text import MIMEText
+            msg = MIMEText(alert_text, "plain", "utf-8")
+            msg["Subject"] = "🔔 wechat-radar Token 提醒"
+            msg["From"] = email_user
+            msg["To"] = email_user
+            host = "smtp.gmail.com" if "gmail" in email_user else "smtp.qq.com"
+            with smtplib.SMTP_SSL(host, 465, timeout=15) as s:
+                s.login(email_user, email_pass)
+                s.sendmail(email_user, [email_user], msg.as_string())
             sent = True
         except Exception as e:
             logger.warning(f"Email alert failed: {e}")
