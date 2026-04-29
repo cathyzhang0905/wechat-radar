@@ -190,3 +190,11 @@ wechat-radar/
 ## License
 
 MIT
+
+---
+
+## About the builder
+
+Built by **Cathy** ([@cathyzhang0905](https://github.com/cathyzhang0905)) — AI-native PM. Senior PM at DiDi, pivoting to AI-native product roles. I build tools at the intersection of [agent oversight](https://github.com/cathyzhang0905/agent-cockpit) and [personal information processing](https://github.com/cathyzhang0905).
+
+Interested in **agent collaboration / vertical agents / AI PM workflows / eval methodology**? Open an issue or reach me at [@cathyzhang0905](https://github.com/cathyzhang0905).
