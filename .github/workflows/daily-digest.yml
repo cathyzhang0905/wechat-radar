@@ -1,0 +1,81 @@
+name: wechat-radar daily digest
+
+on:
+  schedule:
+    # CST (UTC+8) 09:00 / 18:00 == UTC 01:00 / 10:00
+    - cron: "0 1 * * *"
+    - cron: "0 10 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Restore state cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            state.json
+            article_cache.json
+            fakeid_cache.json
+            cubox_favorites.json
+            cubox_biz_cache.json
+          key: radar-state-${{ github.run_id }}
+          restore-keys: radar-state-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write secrets to .env and token.json
+        env:
+          AI_PROVIDER: ${{ secrets.AI_PROVIDER }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          CUBOX_TOKEN: ${{ secrets.CUBOX_TOKEN }}
+          WECHAT_TOKEN_JSON: ${{ secrets.WECHAT_TOKEN_JSON }}
+        run: |
+          cat > .env <<EOF
+          AI_PROVIDER=$AI_PROVIDER
+          AI_API_KEY=$AI_API_KEY
+          AI_BASE_URL=$AI_BASE_URL
+          AI_MODEL=$AI_MODEL
+          FEISHU_WEBHOOK=$FEISHU_WEBHOOK
+          EMAIL_USER=$EMAIL_USER
+          EMAIL_PASSWORD=$EMAIL_PASSWORD
+          EMAIL_TO=$EMAIL_TO
+          CUBOX_TOKEN=$CUBOX_TOKEN
+          EOF
+          echo "$WECHAT_TOKEN_JSON" > token.json
+
+      - name: Refresh Cubox favorites (non-blocking)
+        run: python3 cubox_client.py || echo "cubox fetch failed, continuing with local cache"
+
+      - name: Source evolve (non-blocking)
+        run: python3 source_evolve.py --apply || echo "source_evolve failed, continuing"
+
+      - name: Run wechat-radar
+        run: python3 main.py
+
+      - name: Save state cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            state.json
+            article_cache.json
+            fakeid_cache.json
+            cubox_favorites.json
+            cubox_biz_cache.json
+          key: radar-state-${{ github.run_id }}
