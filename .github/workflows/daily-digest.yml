@@ -2,19 +2,22 @@ name: wechat-radar daily digest
 
 on:
   schedule:
-    # 早上 9 点左右触发一次（GitHub 可能有延迟，可接受，不追求准时）
+    # 主触发：早上 9 点左右（GitHub 可能有延迟，可接受，不追求准时）
     # CST (UTC+8) 09:07 == UTC 01:07（错开整点，减少排队延迟概率）
     - cron: "7 1 * * *"
+    # 补漏检查岗：10:33 左右查一次，主触发如果没成功就自动补一次
+    # CST (UTC+8) 10:33 == UTC 02:33
+    - cron: "33 2 * * *"
   workflow_dispatch: {}
 
 permissions:
-  actions: read
+  actions: write
   contents: read
 
 jobs:
   guard:
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && github.event.schedule == '7 1 * * *'
     outputs:
       should_run: ${{ steps.check.outputs.should_run }}
     steps:
@@ -24,8 +27,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           today=$(TZ=Asia/Shanghai date +%F)
-          # 找今天（北京时间）已经成功跑完的 run（不管是 schedule 还是手动触发），
-          # 排除当前这次自己，避免三个冗余触发互相重复发送。
           runs=$(gh api "repos/${{ github.repository }}/actions/workflows/daily-digest.yml/runs?status=success&per_page=20" --jq '.workflow_runs[] | select(.id != ${{ github.run_id }}) | .created_at')
           already=false
           while IFS= read -r ts; do
@@ -37,16 +38,46 @@ jobs:
             fi
           done <<< "$runs"
           if [ "$already" = "true" ]; then
-            echo "今天已经成功跑过一次，跳过这次冗余触发"
+            echo "今天已经成功跑过一次，跳过"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
           else
             echo "今天还没成功跑过，继续执行"
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           fi
 
+  watchdog:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && github.event.schedule == '33 2 * * *'
+    steps:
+      - name: Check today's digest, re-trigger if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          today=$(TZ=Asia/Shanghai date +%F)
+          runs=$(gh api "repos/${{ github.repository }}/actions/workflows/daily-digest.yml/runs?status=success&per_page=20" --jq '.workflow_runs[].created_at')
+          already=false
+          while IFS= read -r ts; do
+            [ -z "$ts" ] && continue
+            run_day=$(TZ=Asia/Shanghai date -d "$ts" +%F)
+            if [ "$run_day" = "$today" ]; then
+              already=true
+              break
+            fi
+          done <<< "$runs"
+          if [ "$already" = "true" ]; then
+            echo "今天已经成功跑过，watchdog 不需要补触发"
+          else
+            echo "今天还没成功跑过，watchdog 补触发一次"
+            gh workflow run daily-digest.yml --ref "${{ github.ref_name }}"
+          fi
+
   run:
     needs: [guard]
-    if: always() && (github.event_name != 'schedule' || needs.guard.outputs.should_run == 'true')
+    if: >-
+      always() && (
+        github.event_name != 'schedule' ||
+        (github.event.schedule == '7 1 * * *' && needs.guard.outputs.should_run == 'true')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
