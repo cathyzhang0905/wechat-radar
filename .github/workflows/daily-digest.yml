@@ -2,11 +2,9 @@ name: wechat-radar daily digest
 
 on:
   schedule:
-    # GitHub 官方建议避开整点（高峰期排队延迟），错开 + 三次冗余尝试。
-    # CST (UTC+8) 09:07 / 09:27 / 09:47 == UTC 01:07 / 01:27 / 01:47
+    # 早上 9 点左右触发一次（GitHub 可能有延迟，可接受，不追求准时）
+    # CST (UTC+8) 09:07 == UTC 01:07（错开整点，减少排队延迟概率）
     - cron: "7 1 * * *"
-    - cron: "27 1 * * *"
-    - cron: "47 1 * * *"
   workflow_dispatch: {}
 
 permissions:
