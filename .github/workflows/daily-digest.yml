@@ -2,12 +2,53 @@ name: wechat-radar daily digest
 
 on:
   schedule:
-    # CST (UTC+8) 09:00 == UTC 01:00
-    - cron: "0 1 * * *"
+    # GitHub 官方建议避开整点（高峰期排队延迟），错开 + 三次冗余尝试。
+    # CST (UTC+8) 09:07 / 09:27 / 09:47 == UTC 01:07 / 01:27 / 01:47
+    - cron: "7 1 * * *"
+    - cron: "27 1 * * *"
+    - cron: "47 1 * * *"
   workflow_dispatch: {}
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
+  guard:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check whether today's digest already succeeded
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          today=$(TZ=Asia/Shanghai date +%F)
+          # 找今天（北京时间）已经成功跑完的 run（不管是 schedule 还是手动触发），
+          # 排除当前这次自己，避免三个冗余触发互相重复发送。
+          runs=$(gh api "repos/${{ github.repository }}/actions/workflows/daily-digest.yml/runs?status=success&per_page=20" --jq '.workflow_runs[] | select(.id != ${{ github.run_id }}) | .created_at')
+          already=false
+          while IFS= read -r ts; do
+            [ -z "$ts" ] && continue
+            run_day=$(TZ=Asia/Shanghai date -d "$ts" +%F)
+            if [ "$run_day" = "$today" ]; then
+              already=true
+              break
+            fi
+          done <<< "$runs"
+          if [ "$already" = "true" ]; then
+            echo "今天已经成功跑过一次，跳过这次冗余触发"
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "今天还没成功跑过，继续执行"
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   run:
+    needs: [guard]
+    if: always() && (github.event_name != 'schedule' || needs.guard.outputs.should_run == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
