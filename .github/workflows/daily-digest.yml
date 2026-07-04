@@ -8,7 +8,13 @@ on:
     # 补漏检查岗：10:33 左右查一次，主触发如果没成功就自动补一次
     # CST (UTC+8) 10:33 == UTC 02:33
     - cron: "33 2 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只验证云端抓取/评分，不发送推送"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   actions: write
@@ -109,7 +115,12 @@ jobs:
         run: python3 source_evolve.py --apply || echo "source_evolve failed, continuing"
 
       - name: Run wechat-radar
-        run: python3 main.py
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.dry_run }}" == "true" ]]; then
+            python3 main.py --dry-run
+          else
+            python3 main.py
+          fi
 
       - name: Save state cache
         if: always()
