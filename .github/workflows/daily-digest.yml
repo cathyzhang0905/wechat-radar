@@ -10,11 +10,15 @@ on:
     - cron: "33 2 * * *"
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: "只验证云端抓取/评分，不发送推送"
+      mode:
+        description: "手动运行模式：smoke 只取一篇微信文章；dry_run 抓取并评分但不推送；full 完整推送"
         required: false
-        default: true
-        type: boolean
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - dry_run
+          - full
 
 permissions:
   actions: write
@@ -109,14 +113,18 @@ jobs:
           echo "$WECHAT_TOKEN_JSON" > token.json
 
       - name: Refresh Cubox favorites (non-blocking)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.mode != 'smoke' }}
         run: python3 cubox_client.py || echo "cubox fetch failed, continuing with local cache"
 
       - name: Source evolve (non-blocking)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.mode != 'smoke' }}
         run: python3 source_evolve.py --apply || echo "source_evolve failed, continuing"
 
       - name: Run wechat-radar
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.dry_run }}" == "true" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "smoke" ]]; then
+            python3 scripts/smoke_wechat_fetch.py
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "dry_run" ]]; then
             python3 main.py --dry-run
           else
             python3 main.py

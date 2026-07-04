@@ -1,34 +1,33 @@
 # wechat-radar · 设计与路线图
 
 > 本文件是这个项目的单一真相源：记录当前部署现状、闭环设计、后续 TODO 与关键决策。
-> 最近更新：2026-06-24
+> 最近更新：2026-07-04
 
 ---
 
-## 一、当前现状（2026-06-24 已完成）
+## 一、当前现状（2026-07-04）
 
-本地部署，按"唤醒电脑就跑"的方式运行（不走死定时）。
+云端部署在 GitHub Actions，每天自动跑；本机不再承担定时任务，避免依赖电脑开机。
 
 | 项 | 状态 |
 |----|------|
-| 部署位置 | `~/Projects/wechat-radar`，独立 venv（system python 3.9） |
+| 部署位置 | GitHub Actions 云端运行；本地 `~/Projects/wechat-radar` 只用于开发/调试 |
 | 采点模型 | DeepSeek（`deepseek-chat`，OpenAI 兼容），key 在 `.env`（已 gitignore） |
 | 推送渠道 | 飞书自定义机器人 webhook（复用原 OpenClaw 那个，已验证 success） |
 | 微信登录 | 已扫码，token 约 3 天失效，失效后飞书提醒重扫 |
 | 公众号 list | `config.yaml` 共 62 个，已校正 |
 | 个性化 profile | 已按本人视角填写（PM、ToB Agent、AI native 协同、要深度），评分已个性化 |
 | 推送量 | `top_n=12`，从 Top20 收窄为 Top12，进入两周控噪实验 |
-| 自动运行 | launchd `com.cathy.wechat-radar`，每天 09:00 / 睡着则唤醒后补跑一次；runner 有当天去重 |
+| 自动运行 | GitHub Actions：09:07 北京时间主跑，10:33 北京时间补漏检查；当天成功后去重 |
 | 闭环复盘 | 主流程成功后自动生成 `reports/feedback-loop-all.md`；也可手动跑 `python3 scripts/analyze_feedback_loop.py --days 7 --write` |
 | Cubox 偏好画像 | `cubox_preferences.py` 从收藏/划线/批注/来源/标签提炼动态偏好，注入评分 prompt，并生成 `reports/cubox-preference-profile.md` |
 
-运行机制与本地 `daily-product-radar`（`com.cathy.wiki.daily-radar`）同构：`StartCalendarInterval` + `RunAtLoad=false`，错过会在唤醒/开机后补跑。
+云端运行不依赖本机开机。手动验证默认使用 GitHub Actions 的 `mode=smoke`，只取一篇微信文章元信息。
 
 相关文件：
 - 项目代码：`~/Projects/wechat-radar/`
-- runner：`~/.claude/scheduled-tasks/run-wechat-radar.sh`
-- 日志：`~/.claude/scheduled-tasks/wechat-radar/`
-- launchd plist：`~/Library/LaunchAgents/com.cathy.wechat-radar.plist`
+- 云端 workflow：`.github/workflows/daily-digest.yml`
+- 本地旧 launchd/runner 已移除，不再使用
 
 ---
 
@@ -79,11 +78,11 @@
 3. 筛选 Top N → 推送飞书（不变）
 4. （可选）命中分析：今天 `scoring_log` 与收藏对照，算「你收藏的文章系统平均打了几分」，写进日志，看闭环有没有变准
 
-当前 runner 实际链路：
+当前云端 workflow 实际链路：
 
 ```
-launchd 09:00 / 唤醒补跑
-  → run-wechat-radar.sh 当天去重
+GitHub Actions 09:07 / 10:33 补漏
+  → guard 当天去重
   → cubox_client.py 刷新收藏/划线正样本
   → analyze_cubox_preferences.py 更新 Cubox 偏好画像报告
   → source_evolve.py --apply 自动补信源
@@ -158,6 +157,16 @@ launchd 09:00 / 唤醒补跑
 ### 下一阶段计划（2026-07：让 loop 真正变准）
 
 目标：不继续堆功能，先验证「Cubox 正反馈 + Top12 控噪 + 动态偏好画像」是否真的让每日推荐更轻、更准。
+
+#### 0. 测试原则：最小可验证集
+- [x] 任何关于云端调度、微信 token、微信接口可用性的测试，默认先跑 `smoke`，只取一个公众号的一篇文章元数据。
+- [x] `smoke` 不抓正文、不调 AI、不写 state、不发推送。
+- [ ] 只有 smoke 成功后，才考虑 `dry_run`。
+- [ ] 只有 dry_run 成功且明确需要端到端验证时，才跑完整推送。
+- [ ] GitHub 手动运行入口：
+  - `mode=smoke`：最小验证，推荐默认。
+  - `mode=dry_run`：抓取和评分，但不发推送。
+  - `mode=full`：完整推送，谨慎使用。
 
 #### 1. Top12 两周观察
 - [ ] 连续跑两周 `top_n=12`，不要频繁改阈值。
