@@ -12,6 +12,7 @@ AI 驱动的微信公众号智能日报 — 自动抓取、多维度评分、个
 - **多渠道推送** — 飞书 / 钉钉 / 企业微信 / 邮件 / Telegram / Bark / Server酱 / PushPlus
 - **多模型支持** — Anthropic / OpenAI / DeepSeek / 通义千问 / 硅基流动 / Ollama 等 12+
 - **评分日志** — 完整保留所有文章评分，供持续调优
+- **反馈闭环** — 对照 Cubox 收藏/划线，复盘推荐命中率、漏报文章、命中来源和标签
 
 ## 快速开始
 
@@ -72,7 +73,7 @@ python3 main.py            # 正式运行
 |--------|------|--------|
 | `scoring.dimensions` | 评分维度、描述、权重 | 4 个核心维度（见下方） |
 | `scoring.min_score` | 推送最低分（1-10） | 5 |
-| `scoring.top_n` | 每次最多推送篇数 | 20 |
+| `scoring.top_n` | 每次最多推送篇数 | 12 |
 
 默认评分维度：
 
@@ -160,7 +161,24 @@ python3 main.py --remove-cron  # 移除
 ```
 公众号列表 → 规则预过滤 → 跨源去重 → AI 多维度评分
   → 排序 Top N → 生成开场白 → 推送 → 保存评分日志
+  → 对照 Cubox 收藏/划线 → 反馈闭环复盘
 ```
+
+## 反馈闭环
+
+用 Cubox 收藏和划线作为真实正反馈，评估 radar 推得准不准：
+
+```bash
+python3 scripts/analyze_feedback_loop.py --write
+python3 scripts/analyze_feedback_loop.py --days 7 --write
+```
+
+报告会写到 `reports/`，重点看：
+
+- 推荐命中率：推给你的文章里，有多少后来被你收藏/标注
+- 正样本召回：你后来收藏/标注的文章里，有多少当时被 radar 推出来
+- 漏报文章：最应该用于调 prompt、调权重、补信源的样本
+- 命中来源/标签/维度差异：判断下一轮应该优化哪里
 
 ## 项目结构
 
@@ -182,7 +200,7 @@ wechat-radar/
 
 ## Roadmap
 
-- [ ] 用户反馈闭环（推送文章支持"有用/没用"反馈，数据驱动评分调优）
+- [x] 用户反馈闭环（对照 Cubox 收藏/划线，生成命中率和漏报复盘）
 - [ ] 周报汇总（攒一周评分日志，周末出精选）
 - [ ] 更多信息源（RSS、Product Hunt、Hacker News，从公众号工具升级为信息雷达）
 - [ ] Claude Code / OpenClaw Skills 集成

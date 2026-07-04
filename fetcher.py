@@ -59,7 +59,7 @@ def _get(url: str, params: dict = None, retries: int = 2) -> Optional[dict]:
             ret = base_resp.get("ret", 0)
             if ret != 0:
                 logger.error(f"WeChat API error: ret={ret}, errmsg={base_resp.get('err_msg', '')}, url={url}")
-                if ret in (200013, 200014, -1):  # token 过期相关错误码
+                if ret in (200003, 200013, 200014, -1):  # token/session 过期相关错误码
                     raise TokenExpiredError(f"Token expired (ret={ret})")
                 return None
             return data

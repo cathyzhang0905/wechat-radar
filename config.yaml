@@ -34,38 +34,61 @@ accounts:
   - Stablehunter
   - 我思故我在
   - 张晓东西南北
-  - 郎瀚威Will
+  - 郎瀚威 Will
   - AI产品阿颖
   - 卓哥投研笔记
   - 猫猫头的日记
   - 数字生命卡兹克
   - P-Hunt内容速览
-  - 无界社区mix lab
+  - 无界社区 mixlab
   - AI Reinvent
   - Draco正在VibeCoding
   - AkashaBot
-  - 张五常
   - 十字路口Crossing
   - 豪大说
   - 随机小分队
   - AI Hacker House
+  # ── Cathy 新增 2026-06-24 ──
+  - 葬AI
+  - 腾讯研究院
+  - 赵纯想
+  - 小头MUJI
+  - Qoder
+  - 闲庭落木
+  - 刘小排r
+  - Wh1isperBlog
+  - 锦秋集
+  - 宝玉AI
+  - 手工川
+  - 这不是AI写的
+  - 晚点再听LaterCast
+  - 思维摩托
+  - FateTell
 
 profile:
-  background: "简要描述你的背景，例如：计算机本科，3 年后端开发经验，目前在关注 AI 应用方向。"
-  expertise_level: intermediate  # beginner / intermediate / advanced
+  background: "资深产品经理，前滴滴国际化 PM（Fintech 支付 / 出行场景），2026 年转向 AI、仍做产品；即将入职做 ToB 方向的 Agent AI 产品。INTP，刻意训练第一性原理思考。"
+  expertise_level: advanced  # beginner / intermediate / advanced
   interests:
-    - AI 技术趋势
-    - 产品设计
-    - 创业与商业化
-    # 添加更多你感兴趣的领域...
+    - ToB / 企业级 Agent 产品
+    - ToC AI 产品
+    - AI 产品设计与方法论
+    - AI native 的组织与协同方式变化
+    - AI 时代 PM 的业务理解 × 技术认知
+    - Agent / LLM 技术原理与工程实践
+    - 深度思考 / 逻辑严谨 / 第一性原理
   preferences:
     prefer_practical: true       # 偏好实操内容
     avoid_marketing_hype: true   # 过滤营销软文
   custom: |
-    # 在这里补充更具体的偏好，帮助 AI 更精准地评分：
-    # - 特别想看：xxx
-    # - 不想看：xxx
-    # - 关注的具体领域：xxx
+    我是产品经理出身，看内容是产品视角：最看重「能不能影响我对产品的判断和行动」。
+    特别想看：
+    - 有深度、有独到洞察、逻辑严谨的内容；第一性原理式的拆解，而非表层资讯罗列。
+    - ToB / ToC AI 产品的真实拆解、设计决策与一手实践（尤其 Agent 类产品）。
+    - AI native 的组织协同、工作方式变化。
+    - 把「业务理解」和「技术认知」结合起来谈的内容；能把技术原理讲清楚、帮 PM 建立技术判断力的。
+    不太想看：
+    - 浅层资讯罗列、蹭热点的口水文、营销软文。
+    - 纯情绪 / 焦虑贩卖、标题党、没有信息增量的内容。
 
 preferences:
   # 合并模式: memory_only | custom_only | memory+custom
@@ -113,8 +136,7 @@ prefilter:
 
 schedule:
   cron:
-    - "0 9 * * *"    # 每天 09:00
-    - "0 18 * * *"   # 每天 18:00
+    - "0 9 * * *"    # 每天 09:00（实际调度在 GitHub Actions，此处仅供本地 --setup-cron 参考）
   log_file: /tmp/wechat-radar.log
 
 scoring:
@@ -147,4 +169,4 @@ scoring:
     #   description: "趣味性（1=枯燥乏味，10=故事性强、引人入胜、有传播力）"
     #   weight: 1
   min_score: 5
-  top_n: 20
+  top_n: 12

@@ -501,11 +501,11 @@ def send_email(articles: list[dict], intro: str = "", branding: dict = None) -> 
 
     try:
         if use_ssl:
-            with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
                 server.login(email_user, email_pass)
                 server.sendmail(email_user, recipients, msg.as_string())
         else:
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
                 server.starttls()
                 server.login(email_user, email_pass)
                 server.sendmail(email_user, recipients, msg.as_string())

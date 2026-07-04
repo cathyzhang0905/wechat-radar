@@ -176,7 +176,7 @@ _SCORING_SYSTEM_TEMPLATE = """你是一个专业的信息筛选与评分助手�
 
 ## 用户画像
 {profile_text}
-
+{positive_block}
 ## 评分维度（每个维度 1-10 分）
 {dimensions_text}
 
@@ -210,6 +210,23 @@ _SCORING_SYSTEM_TEMPLATE = """你是一个专业的信息筛选与评分助手�
 - category 只选一个，不要用 | 或其他符号组合多个类别"""
 
 
+_positive_block_cache = None
+
+
+def _get_positive_block() -> str:
+    """Cubox 正样本 few-shot 块（同一次运行只构建一次；无数据/出错时为空，不影响评分）。"""
+    global _positive_block_cache
+    if _positive_block_cache is None:
+        try:
+            import feedback
+            ex = feedback.build_positive_examples()
+        except Exception as e:
+            logger.warning(f"构建 Cubox few-shot 正例失败，跳过: {e}")
+            ex = ""
+        _positive_block_cache = f"\n## 用户真正喜欢的文章（评分高分参照）\n{ex}\n" if ex else ""
+    return _positive_block_cache
+
+
 def _build_scoring_prompt(profile_text: str, dimensions: dict) -> str:
     """根据维度配置动态生成评分 prompt"""
     dims_lines = []
@@ -222,6 +239,7 @@ def _build_scoring_prompt(profile_text: str, dimensions: dict) -> str:
 
     return _SCORING_SYSTEM_TEMPLATE.format(
         profile_text=profile_text,
+        positive_block=_get_positive_block(),
         dimensions_text=dimensions_text,
         scores_format=scores_format,
     )

@@ -3,8 +3,11 @@
 __pycache__/
 *.pyc
 logs/
+reports/
 state.json
 token.json
 fakeid_cache.json
 article_cache.json
+cubox_favorites.json
+cubox_biz_cache.json
 config.yaml.local
