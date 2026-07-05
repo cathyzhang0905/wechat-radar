@@ -88,6 +88,43 @@ For this project, WeChat smoke means:
 - Do not silently treat "0 articles" as success when token/session errors are possible.
 - External dependencies should retry at most 3 times, then fail with the stage and reason.
 - Non-critical enrichments such as Cubox refresh and source evolution may be non-blocking, but main digest health checks are blocking.
+- If the failure cause is GitHub Secret, token expiry, or third-party account permission:
+  - Do not keep changing application code.
+  - Name the exact secret or credential that needs human update.
+  - Explain how to verify the update succeeded.
+  - Provide the smallest human operation steps.
+  - After the human update is done, continue with smoke verification before any dry run or full run.
+
+### Secret / Token Failure Protocol
+
+When `health_check.py`, GitHub Actions, or `main.py` shows a token/permission failure, classify it as an external credential issue unless there is direct evidence of a code regression.
+
+For `WECHAT_TOKEN_JSON` failures:
+
+1. Stop code changes.
+2. Tell Cathy to refresh login locally with `python3 main.py --login` if local `token.json` is also invalid.
+3. Tell Cathy to update GitHub Secret `WECHAT_TOKEN_JSON` with the full contents of local `token.json`.
+4. Verify with GitHub Actions manual run:
+   - Workflow: `wechat-radar daily digest`
+   - Input: `mode=smoke`
+5. Success means the Actions log shows `health_check.py --wechat-smoke` passing, especially:
+   - `wechat_token_valid: pass`
+   - `wechat_source_access: pass`
+6. Only after smoke passes may the next step be `mode=dry_run` or the scheduled full run.
+
+For `CUBOX_TOKEN` failures:
+
+1. Stop code changes unless Cubox API shape changed.
+2. Tell Cathy to update GitHub Secret `CUBOX_TOKEN`.
+3. Verify with the smallest Cubox-only command in GitHub Actions or local shell: `python3 cubox_client.py`.
+4. Because Cubox refresh is non-blocking, do not block WeChat smoke on Cubox unless the task is specifically about feedback learning.
+
+For AI or push-channel secrets:
+
+1. Stop code changes unless logs show a request/format bug.
+2. Name the exact missing or failing secret, such as `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, `FEISHU_WEBHOOK`, `EMAIL_USER`, `EMAIL_PASSWORD`, or `EMAIL_TO`.
+3. Verify with `python3 health_check.py` first.
+4. Use `python3 main.py --dry-run` only after health check passes and only if AI scoring needs verification.
 
 ## Loop
 
