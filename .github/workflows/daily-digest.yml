@@ -76,6 +76,7 @@ jobs:
         with:
           path: |
             state.json
+            run_state.json
             article_cache.json
             fakeid_cache.json
             cubox_favorites.json
@@ -112,6 +113,9 @@ jobs:
           EOF
           echo "$WECHAT_TOKEN_JSON" > token.json
 
+      - name: Health check
+        run: python3 health_check.py --wechat-smoke --account "晚点再听LaterCast"
+
       - name: Refresh Cubox favorites (non-blocking)
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.mode != 'smoke' }}
         run: python3 cubox_client.py || echo "cubox fetch failed, continuing with local cache"
@@ -123,7 +127,7 @@ jobs:
       - name: Run wechat-radar
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "smoke" ]]; then
-            python3 scripts/smoke_wechat_fetch.py
+            echo "Smoke mode verified by health_check.py; skipping full digest."
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "dry_run" ]]; then
             python3 main.py --dry-run
           else
@@ -136,6 +140,7 @@ jobs:
         with:
           path: |
             state.json
+            run_state.json
             article_cache.json
             fakeid_cache.json
             cubox_favorites.json

@@ -35,6 +35,7 @@ from notifier import (
     send_email, send_telegram, send_bark,
     send_serverchan, send_pushplus,
 )
+from run_state import RunState, retry_call
 
 # ──────────────────────────────────────────────
 # 日志配置
@@ -50,6 +51,7 @@ STATE_FILE = _script_dir / "state.json"
 CONFIG_LOCAL = _script_dir / "config.yaml.local"
 CONFIG_FILE = CONFIG_LOCAL if CONFIG_LOCAL.exists() else _script_dir / "config.yaml"
 LOG_DIR = _script_dir / "logs"
+RUN_STATE_FILE = _script_dir / "run_state.json"
 
 
 # ──────────────────────────────────────────────
@@ -95,66 +97,83 @@ def save_scoring_log(all_results: list[dict]):
 # ──────────────────────────────────────────────
 
 def run(test_mode: bool = False, dry_run: bool = False):
-    logger.info(f"Starting wechat-digest [test={test_mode}, dry_run={dry_run}]")
+    run_state = RunState(RUN_STATE_FILE)
+    logger.info(f"Starting wechat-digest [test={test_mode}, dry_run={dry_run}, run_id={run_state.run_id}]")
 
     # 0. 检查 token
-    token_data = load_token()
-    if not is_token_valid(token_data):
-        logger.warning("Token missing or expired. Sending Feishu notification...")
-        _notify_token_expired()
-        logger.error("请运行 python3 main.py --login 重新扫码登录")
-        sys.exit(1)
+    run_state.start("fetch", "validate token and load config")
+    try:
+        token_data = load_token()
+        if not is_token_valid(token_data):
+            logger.warning("Token missing or expired. Sending Feishu notification...")
+            _notify_token_expired()
+            msg = "微信 token 缺失或过期；请重新扫码并更新 WECHAT_TOKEN_JSON"
+            run_state.fail_stage("fetch", msg)
+            logger.error("请运行 python3 main.py --login 重新扫码登录")
+            sys.exit(1)
 
-    # 0.1 Token 即将过期提前提醒（12 小时内）
-    expiry = token_data.get("expiry_timestamp", 0)
-    remaining_hours = (expiry - time.time()) / 3600
-    if remaining_hours < 12:
-        logger.warning(f"Token 将在 {remaining_hours:.1f} 小时后过期，发送提前提醒")
-        _notify_token_expiring_soon(remaining_hours)
+        # 0.1 Token 即将过期提前提醒（12 小时内）
+        expiry = token_data.get("expiry_timestamp", 0)
+        remaining_hours = (expiry - time.time()) / 3600
+        if remaining_hours < 12:
+            logger.warning(f"Token 将在 {remaining_hours:.1f} 小时后过期，发送提前提醒")
+            _notify_token_expiring_soon(remaining_hours)
 
-    # 1. 读配置
-    config = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8"))
-    accounts = config.get("accounts", [])
-    scoring_config = config.get("scoring", {})
-    min_score = scoring_config.get("min_score", 5)
-    top_n = scoring_config.get("top_n", 10)
-    fetch_config = config.get("fetch", {})
-    fetch_hours = fetch_config.get("hours", 24)
-    ai_config = config.get("ai", {})
-    min_content_length = ai_config.get("min_content_length", 50)
+        # 1. 读配置
+        config = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8"))
+        accounts = config.get("accounts", [])
+        scoring_config = config.get("scoring", {})
+        min_score = scoring_config.get("min_score", 5)
+        top_n = scoring_config.get("top_n", 10)
+        fetch_config = config.get("fetch", {})
+        fetch_hours = fetch_config.get("hours", 24)
+        ai_config = config.get("ai", {})
+        min_content_length = ai_config.get("min_content_length", 50)
 
-    if not accounts:
-        logger.error("No accounts in config.yaml")
-        sys.exit(1)
+        if not accounts:
+            run_state.fail_stage("fetch", "config.yaml 中没有 accounts")
+            logger.error("No accounts in config.yaml")
+            sys.exit(1)
 
-    logger.info(f"Accounts: {len(accounts)} | fetch_hours={fetch_hours} | min_score={min_score} | top_n={top_n}")
+        logger.info(f"Accounts: {len(accounts)} | fetch_hours={fetch_hours} | min_score={min_score} | top_n={top_n}")
 
-    # 2. 加载已处理记录
-    processed_urls = load_state()
-    logger.info(f"Already processed: {len(processed_urls)} articles")
+        # 2. 加载已处理记录
+        processed_urls = load_state()
+        logger.info(f"Already processed: {len(processed_urls)} articles")
 
-    # 3. 拉取文章
+        # 3. 拉取文章元信息
+        raw_articles = []
+        newly_processed = set()
+
+        # 设置请求间隔
+        import fetcher as _fetcher_mod
+        _fetcher_mod.API_INTERVAL = fetch_config.get("request_interval", 1.5)
+
+        for account_name in accounts:
+            logger.info(f"\n── Fetching: {account_name} ──")
+
+            fakeid = retry_call("fetch", run_state, get_fakeid, account_name, retries=3)
+            if not fakeid:
+                logger.warning(f"Skipping {account_name}: cannot find fakeid")
+                continue
+
+            articles = retry_call("fetch", run_state, get_recent_articles, fakeid, account_name, hours=fetch_hours, retries=3)
+
+            if test_mode:
+                articles = articles[:1]
+            raw_articles.extend(articles)
+        run_state.pass_stage("fetch", f"accounts={len(accounts)}, raw_articles={len(raw_articles)}")
+    except SystemExit:
+        raise
+    except Exception as exc:
+        run_state.fail_stage("fetch", str(exc))
+        raise
+
+    # 4. 解析正文
     all_articles = []
-    newly_processed = set()
-
-    # 设置请求间隔
-    import fetcher as _fetcher_mod
-    _fetcher_mod.API_INTERVAL = fetch_config.get("request_interval", 1.5)
-
-    for account_name in accounts:
-        logger.info(f"\n── Fetching: {account_name} ──")
-
-        fakeid = get_fakeid(account_name)
-        if not fakeid:
-            logger.warning(f"Skipping {account_name}: cannot find fakeid")
-            continue
-
-        articles = get_recent_articles(fakeid, account_name, hours=fetch_hours)
-
-        if test_mode:
-            articles = articles[:1]
-
-        for art in articles:
+    run_state.start("parse", "fetch and parse article content")
+    try:
+        for art in raw_articles:
             url = art["url"]
             if not url:
                 continue
@@ -171,9 +190,10 @@ def run(test_mode: bool = False, dry_run: bool = False):
 
             logger.info(f"  Fetching content: {art['title'][:50]}")
             try:
-                content_data = get_article_content(url)
+                content_data = retry_call("parse", run_state, get_article_content, url, retries=3)
             except TokenExpiredError:
                 _notify_token_expired()
+                run_state.fail_stage("parse", "Token expired mid-run")
                 logger.error("Token expired mid-run. 请运行 python3 main.py --login 重新扫码")
                 sys.exit(1)
 
@@ -193,52 +213,71 @@ def run(test_mode: bool = False, dry_run: bool = False):
                 "cover": art.get("cover") or (images[0] if images else ""),
             })
             newly_processed.add(url)
+        run_state.pass_stage("parse", f"parsed_articles={len(all_articles)}, newly_processed={len(newly_processed)}")
+    except SystemExit:
+        raise
+    except Exception as exc:
+        run_state.fail_stage("parse", str(exc))
+        raise
 
     logger.info(f"\nAfter prefilter: {len(all_articles)} articles")
 
     # Step 1: 跨源去重
-    dedup_threshold = config.get("dedup", {}).get("title_threshold", 0.5)
-    all_articles = deduplicate(all_articles, threshold=dedup_threshold)
-    logger.info(f"After dedup: {len(all_articles)} articles")
+    run_state.start("dedup", "deduplicate by title similarity")
+    try:
+        dedup_threshold = config.get("dedup", {}).get("title_threshold", 0.5)
+        before_dedup = len(all_articles)
+        all_articles = deduplicate(all_articles, threshold=dedup_threshold)
+        logger.info(f"After dedup: {len(all_articles)} articles")
+        run_state.pass_stage("dedup", f"{before_dedup}->{len(all_articles)} articles")
+    except Exception as exc:
+        run_state.fail_stage("dedup", str(exc))
+        raise
 
     # Step 2: AI 评分
     all_results = []  # 评分日志（含所有文章）
     scoring_dims = config.get("scoring", {}).get("dimensions") or {}
     zero_scores = {name: 0 for name in scoring_dims} if scoring_dims else {"relevance": 0, "depth": 0, "info_density": 0, "actionability": 0}
 
-    for art in all_articles:
+    run_state.start("summarize", "AI score and summarize articles")
+    try:
+        for art in all_articles:
         # Bug 4: 正文为空或极短时跳过 AI 评分
-        if len((art.get("text") or "").strip()) < min_content_length:
-            logger.info(f"  Skip AI scoring (content too short): {art['title'][:50]}")
+            if len((art.get("text") or "").strip()) < min_content_length:
+                logger.info(f"  Skip AI scoring (content too short): {art['title'][:50]}")
+                all_results.append({
+                    "title": art["title"],
+                    "account_name": art.get("account_name", ""),
+                    "url": art.get("url", ""),
+                    "is_ad": False,
+                    "scores": dict(zero_scores),
+                    "summary": "正文抓取失败",
+                    "reason": "",
+                    "tags": [],
+                    "category": "其他",
+                    "final_score": 0.0,
+                })
+                continue
+
+            logger.info(f"  AI scoring: {art['title'][:50]}")
+            result = retry_call("summarize", run_state, filter_article, art["title"], art["text"], config, retries=3)
+
+            final_score = result["final_score"]
+            logger.info(
+                f"  → score={final_score:.1f} | ad={result['is_ad']} | "
+                f"cat={result['category']} | {result.get('reason', '')[:40]}"
+            )
+
             all_results.append({
                 "title": art["title"],
                 "account_name": art.get("account_name", ""),
                 "url": art.get("url", ""),
-                "is_ad": False,
-                "scores": dict(zero_scores),
-                "summary": "正文抓取失败",
-                "reason": "",
-                "tags": [],
-                "category": "其他",
-                "final_score": 0.0,
+                **result,
             })
-            continue
-
-        logger.info(f"  AI scoring: {art['title'][:50]}")
-        result = filter_article(art["title"], art["text"], config)
-
-        final_score = result["final_score"]
-        logger.info(
-            f"  → score={final_score:.1f} | ad={result['is_ad']} | "
-            f"cat={result['category']} | {result.get('reason', '')[:40]}"
-        )
-
-        all_results.append({
-            "title": art["title"],
-            "account_name": art.get("account_name", ""),
-            "url": art.get("url", ""),
-            **result,
-        })
+        run_state.pass_stage("summarize", f"scored={len(all_results)}")
+    except Exception as exc:
+        run_state.fail_stage("summarize", str(exc))
+        raise
 
     # Step 3: 排序 + Top-N
     # 过滤广告和低分文章，按综合分降序
@@ -254,44 +293,70 @@ def run(test_mode: bool = False, dry_run: bool = False):
         f"(min_score={min_score}, top_n={top_n}) ──"
     )
 
-    # 构建推送数据
-    push_articles = []
-    for r in recommended:
-        # 找到对应原始文章获取 images/cover
-        original = next((a for a in all_articles if a.get("url") == r.get("url")), {})
-        push_articles.append({
-            "title": r["title"],
-            "account_name": r["account_name"],
-            "url": r["url"],
-            "summary": r["summary"],
-            "reason": r["reason"],
-            "tags": r.get("tags", []),
-            "category": r.get("category", ""),
-            "scores": r.get("scores", {}),
-            "final_score": r["final_score"],
-            "images": original.get("images", []),
-            "cover": original.get("cover", ""),
-        })
+    # 构建推送数据 + 生成开场白
+    run_state.start("newsletter_generate", "build newsletter payload")
+    try:
+        push_articles = []
+        for r in recommended:
+            # 找到对应原始文章获取 images/cover
+            original = next((a for a in all_articles if a.get("url") == r.get("url")), {})
+            push_articles.append({
+                "title": r["title"],
+                "account_name": r["account_name"],
+                "url": r["url"],
+                "summary": r["summary"],
+                "reason": r["reason"],
+                "tags": r.get("tags", []),
+                "category": r.get("category", ""),
+                "scores": r.get("scores", {}),
+                "final_score": r["final_score"],
+                "images": original.get("images", []),
+                "cover": original.get("cover", ""),
+            })
 
-    # Step 4: 生成开场白
-    intro = ""
-    if push_articles:
-        logger.info("Generating newsletter intro...")
-        intro = generate_intro(push_articles, config=config)
-        if intro:
-            logger.info(f"Intro: {intro[:80]}...")
+        intro = ""
+        if push_articles:
+            logger.info("Generating newsletter intro...")
+            intro = retry_call("newsletter_generate", run_state, generate_intro, push_articles, config=config, retries=3)
+            if intro:
+                logger.info(f"Intro: {intro[:80]}...")
+        run_state.pass_stage("newsletter_generate", f"articles={len(push_articles)}, intro={'yes' if intro else 'no'}")
+    except Exception as exc:
+        run_state.fail_stage("newsletter_generate", str(exc))
+        raise
 
     # Step 5: 推送
     branding = config.get("branding", {})
+    run_state.start("email_send", "send configured notification channels")
     if not dry_run and push_articles:
-        send_feishu(push_articles, intro=intro, branding=branding)
-        send_dingtalk(push_articles, intro=intro, branding=branding)
-        send_wecom(push_articles, intro=intro, branding=branding)
-        send_email(push_articles, intro=intro, branding=branding)
-        send_telegram(push_articles, intro=intro, branding=branding)
-        send_bark(push_articles, intro=intro, branding=branding)
-        send_serverchan(push_articles, intro=intro, branding=branding)
-        send_pushplus(push_articles, intro=intro, branding=branding)
+        channels = _configured_push_channels()
+        results = {}
+        senders = {
+            "feishu": send_feishu,
+            "dingtalk": send_dingtalk,
+            "wecom": send_wecom,
+            "email": send_email,
+            "telegram": send_telegram,
+            "bark": send_bark,
+            "serverchan": send_serverchan,
+            "pushplus": send_pushplus,
+        }
+        for name, sender in senders.items():
+            if name not in channels:
+                logger.info(f"Skip {name}: not configured")
+                continue
+            results[name] = retry_call(
+                "email_send",
+                run_state,
+                sender,
+                push_articles,
+                intro=intro,
+                branding=branding,
+                retries=3,
+                retry_false=True,
+            )
+        sent = [name for name, ok in results.items() if ok]
+        run_state.pass_stage("email_send", f"sent_channels={','.join(sent) if sent else 'none'}")
     elif dry_run:
         logger.info("[dry-run] Skipping push")
         if intro:
@@ -303,10 +368,13 @@ def run(test_mode: bool = False, dry_run: bool = False):
             )
             logger.info(f"    {art['summary'][:80]}")
             logger.info(f"    Scores: {art['scores']}")
+        run_state.skip_stage("email_send", "dry-run")
     else:
         logger.info("No recommended articles today")
+        run_state.skip_stage("email_send", "no recommended articles")
 
     # Step 6: 保存评分日志
+    run_state.start("store", "save scoring log and processed-url state")
     if all_results:
         save_scoring_log(all_results)
 
@@ -314,8 +382,10 @@ def run(test_mode: bool = False, dry_run: bool = False):
     if not test_mode and not dry_run and newly_processed:
         save_state(processed_urls | newly_processed)
         logger.info(f"State updated: +{len(newly_processed)} articles")
+    run_state.pass_stage("store", f"scoring_rows={len(all_results)}, newly_processed={len(newly_processed)}")
 
     logger.info("Done.")
+    run_state.complete(f"recommended={len(push_articles)}")
     return push_articles
 
 
@@ -437,6 +507,27 @@ def _send_alert(alert_text: str):
         logger.info("Alert sent via configured channels")
     else:
         logger.warning("No push channels configured — cannot send alert")
+
+
+def _configured_push_channels() -> set[str]:
+    channels = set()
+    if os.getenv("FEISHU_WEBHOOK"):
+        channels.add("feishu")
+    if os.getenv("DINGTALK_WEBHOOK"):
+        channels.add("dingtalk")
+    if os.getenv("WECOM_WEBHOOK"):
+        channels.add("wecom")
+    if os.getenv("EMAIL_USER") and os.getenv("EMAIL_PASSWORD") and os.getenv("EMAIL_TO"):
+        channels.add("email")
+    if os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"):
+        channels.add("telegram")
+    if os.getenv("BARK_URL"):
+        channels.add("bark")
+    if os.getenv("SERVERCHAN_KEY"):
+        channels.add("serverchan")
+    if os.getenv("PUSHPLUS_TOKEN"):
+        channels.add("pushplus")
+    return channels
 
 
 # ──────────────────────────────────────────────

@@ -5,6 +5,7 @@ __pycache__/
 logs/
 reports/
 state.json
+run_state.json
 token.json
 fakeid_cache.json
 article_cache.json

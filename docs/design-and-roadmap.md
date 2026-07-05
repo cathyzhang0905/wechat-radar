@@ -19,6 +19,8 @@
 | 个性化 profile | 已按本人视角填写（PM、ToB Agent、AI native 协同、要深度），评分已个性化 |
 | 推送量 | `top_n=12`，从 Top20 收窄为 Top12，进入两周控噪实验 |
 | 自动运行 | GitHub Actions：09:07 北京时间主跑，10:33 北京时间补漏检查；当天成功后去重 |
+| 可观测状态 | 每次 `main.py` 运行写 `run_state.json`，记录 `fetch / parse / dedup / store / summarize / newsletter_generate / email_send` |
+| 验证入口 | `health_check.py`；云端 workflow 先跑 `python3 health_check.py --wechat-smoke --account "晚点再听LaterCast"` |
 | 闭环复盘 | 主流程成功后自动生成 `reports/feedback-loop-all.md`；也可手动跑 `python3 scripts/analyze_feedback_loop.py --days 7 --write` |
 | Cubox 偏好画像 | `cubox_preferences.py` 从收藏/划线/批注/来源/标签提炼动态偏好，注入评分 prompt，并生成 `reports/cubox-preference-profile.md` |
 
@@ -27,6 +29,9 @@
 相关文件：
 - 项目代码：`~/Projects/wechat-radar/`
 - 云端 workflow：`.github/workflows/daily-digest.yml`
+- Agent harness：`AGENTS.md`
+- 健康检查：`health_check.py`
+- 运行状态：`run_state.json`（不入 git，通过 Actions cache 保存）
 - 本地旧 launchd/runner 已移除，不再使用
 
 ---
@@ -83,16 +88,17 @@
 ```
 GitHub Actions 09:07 / 10:33 补漏
   → guard 当天去重
+  → 写入 secrets 到 .env / token.json
+  → health_check.py --wechat-smoke 最小验证 token 与微信文章元信息
   → cubox_client.py 刷新收藏/划线正样本
-  → analyze_cubox_preferences.py 更新 Cubox 偏好画像报告
   → source_evolve.py --apply 自动补信源
-  → main.py 抓公众号、评分、推送、保存 scoring_log
-  → analyze_feedback_loop.py --write 生成闭环复盘报告
+  → main.py 抓公众号、评分、推送、保存 scoring_log，并写 run_state.json
 ```
 
 可靠性约束：
 - 微信接口返回 `ret=200003 invalid session` 时视为 token/session 失效，主流程应失败并提醒扫码，避免把「0 篇文章」当成功运行。
 - 只有 `main.py` exit 0 才写 `.last-run-date`，失败留待下次唤醒重试。
+- 修复问题前必须先复现，修复后必须跑最小验证；不能在未验证时说已经修好。项目级规则见 `AGENTS.md`。
 
 组件：
 | 文件 | 职责 | 对外接口 |
