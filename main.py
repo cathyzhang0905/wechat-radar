@@ -34,6 +34,9 @@ from notifier import (
     send_feishu, send_dingtalk, send_wecom,
     send_email, send_telegram, send_bark,
     send_serverchan, send_pushplus,
+    send_alert as _send_alert,
+    notify_token_expired as _notify_token_expired,
+    notify_token_expiring_soon as _notify_token_expiring_soon,
 )
 from run_state import RunState, retry_call
 
@@ -392,121 +395,6 @@ def run(test_mode: bool = False, dry_run: bool = False):
 def _now_cst() -> str:
     cst = timezone(timedelta(hours=8))
     return datetime.now(cst).isoformat()
-
-
-def _notify_token_expiring_soon(remaining_hours: float):
-    """Token 即将过期，提前提醒"""
-    alert_text = f"⏰ 微信 Token 将在 {remaining_hours:.1f} 小时后过期，请尽快运行 python3 main.py --login 重新扫码续期"
-    _send_alert(alert_text)
-
-
-def _notify_token_expired():
-    """通过所有已配置的推送渠道通知 token 过期"""
-    _send_alert("⚠️ 微信登录已过期，请运行 python3 main.py --login 重新扫码登录")
-
-
-def _send_alert(alert_text: str):
-    """通过所有已配置的推送渠道发送提醒"""
-    sent = False
-
-    # 飞书
-    feishu_webhook = os.environ.get("FEISHU_WEBHOOK", "")
-    if feishu_webhook:
-        try:
-            import requests as _req
-            _req.post(feishu_webhook, json={"msg_type": "text", "content": {"text": alert_text}}, timeout=10)
-            sent = True
-        except Exception as e:
-            logger.warning(f"Feishu alert failed: {e}")
-
-    # 钉钉
-    dingtalk_webhook = os.environ.get("DINGTALK_WEBHOOK", "")
-    if dingtalk_webhook:
-        try:
-            import requests as _req
-            _req.post(dingtalk_webhook, json={"msgtype": "text", "text": {"content": alert_text}}, timeout=10)
-            sent = True
-        except Exception as e:
-            logger.warning(f"DingTalk alert failed: {e}")
-
-    # 企业微信
-    wecom_webhook = os.environ.get("WECOM_WEBHOOK", "")
-    if wecom_webhook:
-        try:
-            import requests as _req
-            _req.post(wecom_webhook, json={"msgtype": "text", "text": {"content": alert_text}}, timeout=10)
-            sent = True
-        except Exception as e:
-            logger.warning(f"WeCom alert failed: {e}")
-
-    # Telegram
-    tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    tg_chat = os.environ.get("TELEGRAM_CHAT_ID", "")
-    if tg_token and tg_chat:
-        try:
-            import requests as _req
-            _req.post(f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                      json={"chat_id": tg_chat, "text": alert_text}, timeout=10)
-            sent = True
-        except Exception as e:
-            logger.warning(f"Telegram alert failed: {e}")
-
-    # Bark
-    bark_url = os.environ.get("BARK_URL", "")
-    if bark_url:
-        try:
-            import requests as _req
-            url = f"{bark_url.rstrip('/')}/Token提醒/{alert_text}"
-            _req.get(url, timeout=10)
-            sent = True
-        except Exception as e:
-            logger.warning(f"Bark alert failed: {e}")
-
-    # Server酱
-    sc_key = os.environ.get("SERVERCHAN_KEY", "")
-    if sc_key:
-        try:
-            import requests as _req
-            _req.post(f"https://sctapi.ftqq.com/{sc_key}.send",
-                      data={"title": "Token提醒", "desp": alert_text}, timeout=10)
-            sent = True
-        except Exception as e:
-            logger.warning(f"ServerChan alert failed: {e}")
-
-    # PushPlus
-    pp_token = os.environ.get("PUSHPLUS_TOKEN", "")
-    if pp_token:
-        try:
-            import requests as _req
-            _req.post("http://www.pushplus.plus/send",
-                      json={"token": pp_token, "title": "Token提醒", "content": alert_text}, timeout=10)
-            sent = True
-        except Exception as e:
-            logger.warning(f"PushPlus alert failed: {e}")
-
-    # 邮件（仅发给发件人自己，不打扰其他收件人）
-    email_user = os.environ.get("EMAIL_USER") or os.environ.get("GMAIL_USER", "")
-    email_pass = os.environ.get("EMAIL_PASSWORD") or os.environ.get("GMAIL_APP_PASSWORD", "")
-    if email_user and email_pass:
-        try:
-            import smtplib
-            from email.mime.text import MIMEText
-            msg = MIMEText(alert_text, "plain", "utf-8")
-            msg["Subject"] = "🔔 wechat-radar Token 提醒"
-            msg["From"] = email_user
-            msg["To"] = email_user
-            host = "smtp.gmail.com" if "gmail" in email_user else "smtp.qq.com"
-            with smtplib.SMTP_SSL(host, 465, timeout=15) as s:
-                s.login(email_user, email_pass)
-                s.sendmail(email_user, [email_user], msg.as_string())
-            sent = True
-        except Exception as e:
-            logger.warning(f"Email alert failed: {e}")
-
-    if sent:
-        logger.info("Alert sent via configured channels")
-    else:
-        logger.warning("No push channels configured — cannot send alert")
 
 
 def _configured_push_channels() -> set[str]:
