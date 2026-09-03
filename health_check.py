@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -146,6 +147,28 @@ def _check_wechat_smoke(report: CheckReport, config: dict, account: str | None, 
         report.add("wechat_source_access", False, str(exc))
 
 
+def _alert_token_status() -> None:
+    """发送 token 过期/临期提醒（best-effort，不影响健康检查退出码）。
+
+    CI 里 main.py 只在健康检查通过后才会运行，因此提醒必须由这里发出，
+    否则 token 过期时用户只能看到 GitHub 的通用失败通知。
+    临期阈值可用环境变量 TOKEN_WARN_HOURS 调整（默认 24 小时）。
+    """
+    try:
+        from notifier import notify_token_expired, notify_token_expiring_soon
+        token_data = load_token()
+        if not is_token_valid(token_data):
+            notify_token_expired()
+            return
+        expiry = token_data.get("expiry_timestamp", 0)
+        remaining_hours = (expiry - time.time()) / 3600
+        warn_hours = float(os.getenv("TOKEN_WARN_HOURS", "24"))
+        if remaining_hours < warn_hours:
+            notify_token_expiring_soon(remaining_hours)
+    except Exception as exc:
+        print(f"[warn] token alert skipped: {exc}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify wechat-radar health.")
     parser.add_argument("--wechat-smoke", action="store_true", help="Fetch one account's article metadata from WeChat")
@@ -158,6 +181,7 @@ def main() -> int:
     config = _load_config(report)
     _check_env(report)
     token = _check_token(report)
+    _alert_token_status()
     _check_state_files(report)
     _check_newsletter_generate(report)
 
