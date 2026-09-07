@@ -753,3 +753,13 @@ def notify_token_expiring_soon(remaining_hours: float):
 def notify_token_expired():
     """通过所有已配置的推送渠道通知 token 过期"""
     send_alert("⚠️ 微信登录已过期，请运行 python3 main.py --login 重新扫码登录")
+
+
+def notify_rate_limited():
+    """通过所有已配置的推送渠道通知平台限流（ret=200013）。
+
+    与 token 过期区分开：限流时 token 正常，不需要重新扫码，
+    提醒文案明确说明会自动重试，避免误引导用户去续期 token。
+    """
+    send_alert("🚦 微信公众号平台限流（freq control），token 正常无需重新扫码。"
+               "本次运行已跳过，下个定时窗口会自动重试；若连续多天出现再考虑减少账号数或拉大请求间隔。")
