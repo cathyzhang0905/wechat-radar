@@ -24,6 +24,10 @@ load_dotenv(ROOT / ".env")
 from auth import is_token_valid, load_token
 import fetcher
 
+# 限流退出码：CI 工作流据此把本次运行降级为"跳过"（绿色），而不是硬失败。
+# 与 main.py 的 EXIT_RATE_LIMITED 保持一致。
+EXIT_RATE_LIMITED = 42
+
 
 class CheckReport:
     def __init__(self) -> None:
@@ -127,24 +131,35 @@ def _check_newsletter_generate(report: CheckReport) -> None:
         report.add("newsletter_generate", False, str(exc))
 
 
-def _check_wechat_smoke(report: CheckReport, config: dict, account: str | None, hours: int) -> None:
+def _check_wechat_smoke(report: CheckReport, config: dict, account: str | None, hours: int) -> bool:
+    """WeChat 冒烟检查。返回 True 表示被平台限流（ret=200013）。
+
+    限流不是 token 问题，也不是配置问题：单独上报为 rate_limited，
+    措辞明确"token 正常"，避免再被误读成"Token expired"。
+    """
     target = account or ((config.get("accounts") or [""])[0])
     if not target:
         report.add("wechat_source_access", False, "no account available")
-        return
+        return False
     try:
         fakeid = fetcher.get_fakeid(target)
         if not fakeid:
             report.add("wechat_source_access", False, f"cannot resolve fakeid for {target}")
-            return
+            return False
         articles = fetcher.get_recent_articles(fakeid, target, hours=hours)
         ok = bool(articles)
         detail = f"account={target}, articles={len(articles)}"
         if articles:
             detail += f", sample={articles[0].get('title', '')[:40]}"
         report.add("wechat_source_access", ok, detail)
+        return False
+    except fetcher.RateLimitError as exc:
+        report.add("wechat_source_access", False,
+                   f"rate limited (ret=200013 freq control), token OK: {exc}")
+        return True
     except Exception as exc:
         report.add("wechat_source_access", False, str(exc))
+        return False
 
 
 def _alert_token_status() -> None:
@@ -169,6 +184,18 @@ def _alert_token_status() -> None:
         print(f"[warn] token alert skipped: {exc}")
 
 
+def _alert_rate_limited() -> None:
+    """发送限流提醒（best-effort，不影响健康检查退出码）。
+
+    与 token 提醒分开：限流时 token 正常，文案明确不需要重新扫码。
+    """
+    try:
+        from notifier import notify_rate_limited
+        notify_rate_limited()
+    except Exception as exc:
+        print(f"[warn] rate-limit alert skipped: {exc}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify wechat-radar health.")
     parser.add_argument("--wechat-smoke", action="store_true", help="Fetch one account's article metadata from WeChat")
@@ -185,14 +212,27 @@ def main() -> int:
     _check_state_files(report)
     _check_newsletter_generate(report)
 
+    rate_limited = False
     if args.wechat_smoke:
         if token:
-            _check_wechat_smoke(report, config, args.account or None, args.hours)
+            rate_limited = _check_wechat_smoke(report, config, args.account or None, args.hours)
         else:
             report.add("wechat_source_access", False, "skipped because token is invalid")
 
+    if rate_limited:
+        _alert_rate_limited()
+
     if args.json:
         print(json.dumps({"checks": report.rows}, ensure_ascii=False, indent=2))
+    if rate_limited:
+        # 限流优先按"跳过"处理；但如果还有别的 critical 检查失败，仍按失败退出，
+        # 避免限流掩盖真实的配置/env 问题
+        other_failures = [
+            r for r in report.rows
+            if r["status"] == "fail" and r["critical"] and r["name"] != "wechat_source_access"
+        ]
+        if not other_failures:
+            return EXIT_RATE_LIMITED
     return report.exit_code()
 
 

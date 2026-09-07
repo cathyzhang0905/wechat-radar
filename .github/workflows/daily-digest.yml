@@ -114,7 +114,19 @@ jobs:
           echo "$WECHAT_TOKEN_JSON" > token.json
 
       - name: Health check
-        run: python3 health_check.py --wechat-smoke --account "晚点再听LaterCast"
+        id: health
+        run: |
+          set +e
+          python3 health_check.py --wechat-smoke --account "晚点再听LaterCast"
+          rc=$?
+          set -e
+          if [ "$rc" = "42" ]; then
+            # 平台限流（ret=200013）：token 正常，降级为跳过本次，不标红、不重复敲击 API
+            echo "::warning::WeChat rate limited (freq control); skipping today's run, next scheduled window retries"
+            echo "rate_limited=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit $rc
 
       - name: Refresh Cubox favorites (non-blocking)
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.mode != 'smoke' }}
@@ -125,14 +137,26 @@ jobs:
         run: python3 source_evolve.py --apply || echo "source_evolve failed, continuing"
 
       - name: Run wechat-radar
+        if: steps.health.outputs.rate_limited != 'true'
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "smoke" ]]; then
             echo "Smoke mode verified by health_check.py; skipping full digest."
+            exit 0
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "dry_run" ]]; then
-            python3 main.py --dry-run
+            cmd="python3 main.py --dry-run"
           else
-            python3 main.py
+            cmd="python3 main.py"
           fi
+          set +e
+          $cmd
+          rc=$?
+          set -e
+          if [ "$rc" = "42" ]; then
+            # 运行中途被限流：降级为跳过（绿色），等下个定时窗口自动重试
+            echo "::warning::WeChat rate limited mid-run; skipped, next scheduled window retries"
+            exit 0
+          fi
+          exit $rc
 
       - name: Save state cache
         if: always()
