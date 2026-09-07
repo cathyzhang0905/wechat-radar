@@ -26,7 +26,10 @@ _script_dir = Path(__file__).parent
 load_dotenv(_script_dir / ".env")
 
 from auth import load_token, is_token_valid, login
-from fetcher import get_fakeid, get_recent_articles, get_article_content, TokenExpiredError
+from fetcher import (
+    get_fakeid, get_recent_articles, get_article_content,
+    TokenExpiredError, RateLimitError,
+)
 from filter import filter_article, generate_intro
 from prefilter import should_skip
 from dedup import deduplicate
@@ -37,6 +40,7 @@ from notifier import (
     send_alert as _send_alert,
     notify_token_expired as _notify_token_expired,
     notify_token_expiring_soon as _notify_token_expiring_soon,
+    notify_rate_limited as _notify_rate_limited,
 )
 from run_state import RunState, retry_call
 
@@ -55,6 +59,9 @@ CONFIG_LOCAL = _script_dir / "config.yaml.local"
 CONFIG_FILE = CONFIG_LOCAL if CONFIG_LOCAL.exists() else _script_dir / "config.yaml"
 LOG_DIR = _script_dir / "logs"
 RUN_STATE_FILE = _script_dir / "run_state.json"
+
+# 限流退出码：CI 工作流把它翻译成"跳过本次"（绿色），而不是硬失败
+EXIT_RATE_LIMITED = 42
 
 
 # ──────────────────────────────────────────────
@@ -155,12 +162,25 @@ def run(test_mode: bool = False, dry_run: bool = False):
         for account_name in accounts:
             logger.info(f"\n── Fetching: {account_name} ──")
 
-            fakeid = retry_call("fetch", run_state, get_fakeid, account_name, retries=3)
-            if not fakeid:
-                logger.warning(f"Skipping {account_name}: cannot find fakeid")
-                continue
+            try:
+                fakeid = retry_call("fetch", run_state, get_fakeid, account_name, retries=3)
+                if not fakeid:
+                    logger.warning(f"Skipping {account_name}: cannot find fakeid")
+                    continue
 
-            articles = retry_call("fetch", run_state, get_recent_articles, fakeid, account_name, hours=fetch_hours, retries=3)
+                articles = retry_call("fetch", run_state, get_recent_articles, fakeid, account_name, hours=fetch_hours, retries=3)
+            except RateLimitError as exc:
+                # 平台限流：token 正常，不要再发"重新扫码"提醒。通知一次后退出，
+                # 下个定时窗口自动重试（退出码 EXIT_RATE_LIMITED，CI 据此降级为跳过而非失败）
+                _notify_rate_limited()
+                run_state.fail_stage("fetch", str(exc))
+                logger.error("微信平台限流，本次运行跳过，下个定时窗口自动重试")
+                sys.exit(EXIT_RATE_LIMITED)
+            except TokenExpiredError:
+                _notify_token_expired()
+                run_state.fail_stage("fetch", "Token expired mid-run")
+                logger.error("Token expired mid-run. 请运行 python3 main.py --login 重新扫码")
+                sys.exit(1)
 
             if test_mode:
                 articles = articles[:1]
@@ -199,6 +219,11 @@ def run(test_mode: bool = False, dry_run: bool = False):
                 run_state.fail_stage("parse", "Token expired mid-run")
                 logger.error("Token expired mid-run. 请运行 python3 main.py --login 重新扫码")
                 sys.exit(1)
+            except RateLimitError as exc:
+                _notify_rate_limited()
+                run_state.fail_stage("parse", f"Rate limited mid-run: {exc}")
+                logger.error("微信平台限流，本次运行跳过，下个定时窗口自动重试")
+                sys.exit(EXIT_RATE_LIMITED)
 
             text = content_data.get("text", "")
             images = content_data.get("images", [])
