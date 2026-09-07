@@ -180,6 +180,10 @@ def retry_call(
             last_error = exc
             if state:
                 state.record_retry(stage, attempt, retries, str(exc))
+            if getattr(exc, "non_retryable", False):
+                # 明确不可原地重试的错误（token 过期、限流退避已耗尽）直接抛出，
+                # 避免用固定短间隔重复敲击外部依赖
+                raise
             if attempt < retries:
                 time.sleep(delay_sec * attempt)
     raise last_error  # type: ignore[misc]
