@@ -19,6 +19,9 @@ BASE = "https://mp.weixin.qq.com"
 REQUEST_TIMEOUT = 15
 RETRY_DELAY = 2
 API_INTERVAL = 1.5  # 每次 API 请求间隔（秒）
+RATE_LIMIT_RETRIES = 3       # 遇到限流（ret=200013）时的最大退避重试次数
+RATE_LIMIT_BASE_DELAY = 15   # 限流退避基数（秒），指数增长：15 → 30 → 60
+RATE_LIMIT_MAX_DELAY = 120   # 单次退避上限（秒）
 _last_request_time = 0.0
 
 FAKEID_CACHE_FILE = Path(__file__).parent / "fakeid_cache.json"
@@ -48,7 +51,9 @@ def _rate_limit():
 
 def _get(url: str, params: dict = None, retries: int = 2) -> Optional[dict]:
     headers = _make_headers()
-    for attempt in range(retries + 1):
+    net_attempt = 0  # 网络错误重试计数
+    rl_attempt = 0   # 限流退避计数（与网络错误重试相互独立）
+    while True:
         _rate_limit()
         try:
             resp = requests.get(url, params=params, headers=headers, timeout=REQUEST_TIMEOUT)
@@ -58,24 +63,42 @@ def _get(url: str, params: dict = None, retries: int = 2) -> Optional[dict]:
             base_resp = data.get("base_resp", {})
             ret = base_resp.get("ret", 0)
             if ret != 0:
-                logger.error(f"WeChat API error: ret={ret}, errmsg={base_resp.get('err_msg', '')}, url={url}")
-                if ret in (200003, 200013, 200014, -1):  # token/session 过期相关错误码
+                errmsg = base_resp.get("err_msg", "")
+                logger.error(f"WeChat API error: ret={ret}, errmsg={errmsg}, url={url}")
+                if ret == 200013:  # freq control：平台限流，与 token 是否过期无关
+                    if rl_attempt < RATE_LIMIT_RETRIES:
+                        delay = min(RATE_LIMIT_BASE_DELAY * (2 ** rl_attempt), RATE_LIMIT_MAX_DELAY)
+                        rl_attempt += 1
+                        logger.warning(f"Rate limited (ret=200013), backoff {delay}s then retry "
+                                       f"({rl_attempt}/{RATE_LIMIT_RETRIES})...")
+                        time.sleep(delay)
+                        continue
+                    raise RateLimitError(f"WeChat rate limited (ret=200013 {errmsg}), "
+                                         f"still limited after {RATE_LIMIT_RETRIES} backoff retries")
+                if ret in (200003, 200014, -1):  # token/session 过期相关错误码
                     raise TokenExpiredError(f"Token expired (ret={ret})")
                 return None
             return data
-        except TokenExpiredError:
+        except (TokenExpiredError, RateLimitError):
             raise
         except requests.RequestException as e:
-            if attempt < retries:
-                logger.warning(f"Request failed ({attempt+1}/{retries+1}): {e}, retrying...")
+            if net_attempt < retries:
+                net_attempt += 1
+                logger.warning(f"Request failed ({net_attempt}/{retries + 1}): {e}, retrying...")
                 time.sleep(RETRY_DELAY)
             else:
-                logger.error(f"Request failed after {retries+1} attempts: {url} - {e}")
+                logger.error(f"Request failed after {retries + 1} attempts: {url} - {e}")
                 return None
 
 
 class TokenExpiredError(Exception):
-    pass
+    """微信 token/session 过期（ret=200003/200014/-1）。需要重新扫码，原地重试无意义。"""
+    non_retryable = True
+
+
+class RateLimitError(Exception):
+    """微信平台限流（ret=200013 freq control）。token 正常，通常下个时间窗自行恢复。"""
+    non_retryable = True
 
 
 def _load_fakeid_cache() -> dict:
